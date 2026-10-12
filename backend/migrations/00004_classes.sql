@@ -1,0 +1,1 @@
+CREATE TABLE streams (id text PRIMARY KEY, school_id text NOT NULL REFERENCES tenants(id), grade text NOT NULL, name text NOT NULL, class_teacher_id text REFERENCES users(id), prefect_id text REFERENCES users(id), capacity int NOT NULL CHECK(capacity > 0), UNIQUE(school_id, grade, name));

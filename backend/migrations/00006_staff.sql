@@ -1,0 +1,1 @@
+CREATE TABLE staff_profiles (user_id text PRIMARY KEY REFERENCES users(id), school_id text NOT NULL REFERENCES tenants(id), tsc_number text, employment_type text, subjects text[] NOT NULL DEFAULT '{}');

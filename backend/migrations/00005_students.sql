@@ -1,0 +1,2 @@
+CREATE TABLE students (id text PRIMARY KEY, school_id text NOT NULL REFERENCES tenants(id), admission_number text NOT NULL, name text NOT NULL, nemis_upi text, birth_certificate_no text, stream_id text REFERENCES streams(id), emergency_contact text, medical_conditions text, created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(school_id, admission_number));
+CREATE TABLE student_parents (student_id text NOT NULL REFERENCES students(id), parent_id text NOT NULL REFERENCES users(id), PRIMARY KEY(student_id,parent_id));

@@ -1,0 +1,2 @@
+CREATE TABLE academic_terms (id text PRIMARY KEY, school_id text NOT NULL REFERENCES tenants(id), name text NOT NULL, academic_year int NOT NULL, opens_on date NOT NULL, closes_on date NOT NULL, active boolean NOT NULL DEFAULT false, CHECK(opens_on < closes_on));
+CREATE TABLE term_holidays (id bigserial PRIMARY KEY, term_id text NOT NULL REFERENCES academic_terms(id), starts_on date NOT NULL, ends_on date NOT NULL, CHECK(starts_on <= ends_on));

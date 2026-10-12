@@ -1,0 +1,1 @@
+CREATE TABLE tenants (id text PRIMARY KEY, name text NOT NULL, mode text NOT NULL CHECK (mode IN ('day','boarding','mixed')), public_school boolean NOT NULL DEFAULT true, created_at timestamptz NOT NULL DEFAULT now());
