@@ -1,0 +1,1 @@
+-- Institutional settings queries are kept here for sqlc generation.

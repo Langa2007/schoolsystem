@@ -1,0 +1,1 @@
+-- Morning roll, lesson attendance, and reconciliation queries are kept here for sqlc generation.

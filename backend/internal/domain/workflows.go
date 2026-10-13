@@ -1,4 +1,4 @@
-package phaseone
+package domain
 
 import (
 	"crypto/sha256"

@@ -1,0 +1,1 @@
+-- Append-only audit queries are kept here for sqlc generation.

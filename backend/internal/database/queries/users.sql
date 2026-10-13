@@ -1,0 +1,1 @@
+-- User, student, staff, and parent queries are kept here for sqlc generation.

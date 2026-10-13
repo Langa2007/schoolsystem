@@ -4,18 +4,18 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"os"
 
-	"elimu-core/backend/internal/phaseone"
+	"elimu-core/backend/internal/config"
+	"elimu-core/backend/internal/modules/school_config"
+	"elimu-core/backend/internal/pkg/sms"
 )
 
 func main() {
-	notifier := &phaseone.MemoryNotifier{}
-	service, err := phaseone.NewService(phaseone.SchoolSettings{
-		ID: "default-school", Name: env("SCHOOL_NAME", "ElimuCore Demo School"),
-		Mode:         phaseone.SchoolMode(env("SCHOOL_MODE", string(phaseone.DayOnly))),
-		PublicSchool: env("PUBLIC_SCHOOL", "true") == "true",
-	}, notifier)
+	cfg := config.FromEnvironment()
+	service, err := school_config.NewService(school_config.SchoolSettings{
+		ID: cfg.SchoolID, Name: cfg.SchoolName,
+		Mode: school_config.SchoolMode(cfg.SchoolMode), PublicSchool: cfg.PublicSchool,
+	}, sms.NewMemoryAdapter())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -30,18 +30,18 @@ func main() {
 	mux.HandleFunc("GET /api/v1/phase-one", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"implemented": []string{"institutional_settings", "rbac_role_union", "student_staff_registers", "morning_roll", "lesson_attendance", "four_pm_reconciliation", "sms_alert_port"},
-			"note":        "Use the phaseone service package to add authenticated persistence and production gateways.",
+			"note":        "Phase 1 domain behavior is implemented behind the structured module facades; persistence and production gateways are deployment work.",
 		})
 	})
-	log.Printf("ElimuCore Phase 1 API listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", mux))
-}
-
-func env(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return fallback
+	mux.HandleFunc("GET /api/v1/phase-two", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"curriculum":  "pure_cbc",
+			"implemented": []string{"grade_10_to_12_pathways", "competency_rubrics", "exam_mark_validation", "submission_locking", "admission_sorted_verification", "dos_principal_approval_gates", "correction_audit_trail"},
+			"open":        []string{"concurrent_pdf_report_worker"},
+		})
+	})
+	log.Printf("ElimuCore Phase 1 API listening on %s", cfg.HTTPAddress)
+	log.Fatal(http.ListenAndServe(cfg.HTTPAddress, mux))
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

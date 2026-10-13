@@ -1,0 +1,1 @@
+-- Grade and stream queries are kept here for sqlc generation.

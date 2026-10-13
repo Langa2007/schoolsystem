@@ -1,0 +1,1 @@
+-- Academic calendar queries are kept here for sqlc generation.

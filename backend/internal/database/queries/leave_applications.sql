@@ -1,0 +1,1 @@
+-- Leave application queries are kept here for sqlc generation.

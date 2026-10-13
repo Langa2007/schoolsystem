@@ -1,4 +1,4 @@
-package phaseone
+package domain
 
 import (
 	"crypto/rand"
@@ -30,6 +30,8 @@ const (
 	RolePrefect       Role = "prefect"
 	RoleNurse         Role = "nurse"
 	RoleHOS           Role = "head_of_subject"
+	RoleExamOfficer   Role = "exam_officer"
+	RoleDOS           Role = "director_of_studies"
 )
 
 type SchoolSettings struct {
@@ -139,6 +141,9 @@ type Service struct {
 	counts          map[string]PrefectCount
 	deliveries      map[string]LessonDelivery
 	audits          []AuditEvent
+	cbcEnrollments  map[string]CBCEnrollment
+	examSheets      map[string]ExamSheet
+	corrections     map[string]CorrectionTicket
 }
 
 func NewService(settings SchoolSettings, notifier Notifier) (*Service, error) {
@@ -157,6 +162,7 @@ func NewService(settings SchoolSettings, notifier Notifier) (*Service, error) {
 		lessons: map[string]LessonAttendance{}, reconciliations: map[string]Reconciliation{},
 		terms: map[string]AcademicTerm{}, streams: map[string]Stream{}, accounts: map[string]Account{},
 		leaves: map[string]LeaveApplication{}, counts: map[string]PrefectCount{}, deliveries: map[string]LessonDelivery{},
+		cbcEnrollments: map[string]CBCEnrollment{}, examSheets: map[string]ExamSheet{}, corrections: map[string]CorrectionTicket{},
 		notifier: notifier,
 	}, nil
 }
