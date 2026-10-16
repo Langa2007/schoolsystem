@@ -32,13 +32,16 @@ const (
 	RoleHOS           Role = "head_of_subject"
 	RoleExamOfficer   Role = "exam_officer"
 	RoleDOS           Role = "director_of_studies"
+	RoleBursar        Role = "bursar"
+	RoleAccountsClerk Role = "accounts_clerk"
 )
 
 type SchoolSettings struct {
-	ID           string     `json:"id"`
-	Name         string     `json:"name"`
-	Mode         SchoolMode `json:"mode"`
-	PublicSchool bool       `json:"public_school"`
+	ID                    string     `json:"id"`
+	Name                  string     `json:"name"`
+	Mode                  SchoolMode `json:"mode"`
+	PublicSchool          bool       `json:"public_school"`
+	FeeWithholdingEnabled bool       `json:"fee_withholding_enabled"`
 }
 
 type User struct {
@@ -144,6 +147,12 @@ type Service struct {
 	cbcEnrollments  map[string]CBCEnrollment
 	examSheets      map[string]ExamSheet
 	corrections     map[string]CorrectionTicket
+	voteHeads       map[string]VoteHead
+	invoices        map[string]Invoice
+	ledger          []LedgerEntry
+	payments        map[string]Payment
+	unmatched       map[string]Payment
+	waivers         map[string]FeeWaiver
 }
 
 func NewService(settings SchoolSettings, notifier Notifier) (*Service, error) {
@@ -163,6 +172,8 @@ func NewService(settings SchoolSettings, notifier Notifier) (*Service, error) {
 		terms: map[string]AcademicTerm{}, streams: map[string]Stream{}, accounts: map[string]Account{},
 		leaves: map[string]LeaveApplication{}, counts: map[string]PrefectCount{}, deliveries: map[string]LessonDelivery{},
 		cbcEnrollments: map[string]CBCEnrollment{}, examSheets: map[string]ExamSheet{}, corrections: map[string]CorrectionTicket{},
+		voteHeads: map[string]VoteHead{}, invoices: map[string]Invoice{}, payments: map[string]Payment{},
+		unmatched: map[string]Payment{}, waivers: map[string]FeeWaiver{},
 		notifier: notifier,
 	}, nil
 }

@@ -1,0 +1,2 @@
+CREATE TABLE mpesa_callbacks (reference text PRIMARY KEY, school_id text NOT NULL REFERENCES tenants(id), admission_number text NOT NULL, amount_cents bigint NOT NULL CHECK (amount_cents > 0), phone text NOT NULL, channel text NOT NULL, received_at timestamptz NOT NULL DEFAULT now(), processed_at timestamptz);
+CREATE TABLE unmatched_payments (reference text PRIMARY KEY REFERENCES mpesa_callbacks(reference), school_id text NOT NULL REFERENCES tenants(id), resolution_note text, resolved_by text REFERENCES users(id), resolved_at timestamptz);
