@@ -1,0 +1,3 @@
+CREATE TABLE timetable_solver_jobs (id text PRIMARY KEY, school_id text NOT NULL REFERENCES tenants(id), status text NOT NULL CHECK (status IN ('queued','running','succeeded','failed')), request jsonb NOT NULL, solution jsonb, error text, created_at timestamptz NOT NULL DEFAULT now(), completed_at timestamptz);
+CREATE TABLE timetable_slots (id text PRIMARY KEY, school_id text NOT NULL REFERENCES tenants(id), draft_id text NOT NULL, request_id text NOT NULL, day text NOT NULL, period int NOT NULL CHECK (period > 0), duration int NOT NULL CHECK (duration > 0), locked boolean NOT NULL DEFAULT false);
+CREATE INDEX timetable_slots_school_day_period_idx ON timetable_slots(school_id, day, period);

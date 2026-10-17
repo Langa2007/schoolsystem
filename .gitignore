@@ -2,3 +2,6 @@ PHASES_README.md
 README.md
 STRUCTURE_README.md
 SYSTEM_README.md
+__pycache__/
+*.pyc
+.env

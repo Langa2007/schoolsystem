@@ -224,6 +224,23 @@ func (s *Service) UnmatchedPayments() []Payment {
 	return result
 }
 
+func (s *Service) PostLibraryCharge(studentID, reference string, amountCents int64) error {
+	if studentID == "" || reference == "" || amountCents <= 0 {
+		return errors.New("student, reference, and positive charge are required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.students[studentID]; !ok {
+		return errors.New("student not found")
+	}
+	s.ledger = append(s.ledger, LedgerEntry{
+		ID: randomID(), StudentID: studentID, ReferenceID: reference,
+		Description: "library replacement charge", DebitCents: amountCents,
+		CreatedAt: time.Now().UTC(),
+	})
+	return nil
+}
+
 func (s *Service) ResolveUnmatchedPayment(actor User, reference, studentID string) error {
 	if !financeActor(actor) {
 		return errors.New("finance role required")
