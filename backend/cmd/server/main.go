@@ -101,6 +101,12 @@ func routes(schoolService *school_config.Service, authService *auth.Service) htt
 			"implemented": []string{"cp_sat_lesson_solver_contract", "go_hard_constraint_revalidation", "discipline_incidents", "counseling_access_control", "boarding_allocations", "exeat_tracking", "sickbay_referrals", "library_replacement_charges", "inventory_transactions", "bulk_sms_boundary"},
 			"open":        []string{"solver_http_client_and_job_registration", "timetable_and_operations_api_endpoints", "persistent_repository_wiring", "exam_and_duty_roster_solver_endpoints", "frontend_timetable_editor", "production_sms_gateway", "library_lost_book_ledger_reconciliation"},
 		})
+		mux.HandleFunc("GET /api/v1/phase-five", func(w http.ResponseWriter, _ *http.Request) {
+			_ = response.JSON(w, http.StatusOK, map[string]any{
+				"implemented": []string{"indexeddb_offline_queue", "idempotent_sync_contract", "conflict_detection", "ussd_fee_and_attendance_queries", "tenant_isolation_boundary", "nemis_csv_export", "knec_csv_export", "performance_deviation_analysis", "installable_pwa_shell"},
+				"open":        []string{"persistent_sync_repository_wiring", "production_ussd_gateway", "certified_ministry_templates", "horizontal_load_validation"},
+			})
+		})
 	})
 	return securityHeaders(mux)
 }

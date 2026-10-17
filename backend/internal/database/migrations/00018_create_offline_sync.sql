@@ -1,0 +1,2 @@
+CREATE TABLE sync_operations (id text PRIMARY KEY, school_id text NOT NULL REFERENCES tenants(id), actor_id text NOT NULL REFERENCES users(id), entity text NOT NULL, action text NOT NULL, version bigint NOT NULL, payload jsonb NOT NULL, status text NOT NULL CHECK (status IN ('applied','conflict','failed')), result jsonb, created_at timestamptz NOT NULL DEFAULT now());
+CREATE UNIQUE INDEX sync_operations_school_entity_version_idx ON sync_operations(school_id, entity, version);
