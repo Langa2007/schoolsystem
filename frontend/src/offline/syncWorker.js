@@ -1,8 +1,6 @@
-import { pendingOperations, removeOperation, type PendingOperation } from "./indexedDb";
+import { pendingOperations, removeOperation } from "./indexedDb.js";
 
-type SyncResult = { status: "applied" | "conflict"; operationId: string };
-
-export async function syncPending(apiBase: string, fetcher: typeof fetch = fetch): Promise<SyncResult[]> {
+export async function syncPending(apiBase, fetcher = fetch) {
   const results: SyncResult[] = [];
   for (const operation of await pendingOperations()) {
     const response = await fetcher(`${apiBase}/api/v1/sync/operations`, {
@@ -13,7 +11,7 @@ export async function syncPending(apiBase: string, fetcher: typeof fetch = fetch
     if (!response.ok) {
       throw new Error(`sync failed with HTTP ${response.status}`);
     }
-    const result = (await response.json()) as SyncResult;
+    const result = await response.json();
     results.push(result);
     if (result.status === "applied") {
       await removeOperation(operation.id);
@@ -22,7 +20,7 @@ export async function syncPending(apiBase: string, fetcher: typeof fetch = fetch
   return results;
 }
 
-export function registerBackgroundSync(): void {
+export function registerBackgroundSync() {
   if ("serviceWorker" in navigator) {
     void navigator.serviceWorker.register("/service-worker.js");
   }

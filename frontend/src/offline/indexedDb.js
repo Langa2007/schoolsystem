@@ -1,18 +1,7 @@
-export type PendingOperation = {
-  id: string;
-  tenantId: string;
-  actorId: string;
-  entity: string;
-  action: string;
-  version: number;
-  payload: unknown;
-  createdAt: string;
-};
-
 const databaseName = "elimucore-offline";
 const storeName = "operations";
 
-export function openOfflineDb(): Promise<IDBDatabase> {
+export function openOfflineDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(databaseName, 1);
     request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
@@ -26,7 +15,7 @@ export function openOfflineDb(): Promise<IDBDatabase> {
   });
 }
 
-export async function queueOperation(operation: PendingOperation): Promise<void> {
+export async function queueOperation(operation) {
   const database = await openOfflineDb();
   await new Promise<void>((resolve, reject) => {
     const transaction = database.transaction(storeName, "readwrite");
@@ -37,18 +26,18 @@ export async function queueOperation(operation: PendingOperation): Promise<void>
   database.close();
 }
 
-export async function pendingOperations(): Promise<PendingOperation[]> {
+export async function pendingOperations() {
   const database = await openOfflineDb();
-  const values = await new Promise<PendingOperation[]>((resolve, reject) => {
+  const values = await new Promise((resolve, reject) => {
     const request = database.transaction(storeName, "readonly").objectStore(storeName).getAll();
     request.onerror = () => reject(request.error ?? new Error("IndexedDB read failed"));
-    request.onsuccess = () => resolve(request.result as PendingOperation[]);
+    request.onsuccess = () => resolve(request.result);
   });
   database.close();
   return values;
 }
 
-export async function removeOperation(id: string): Promise<void> {
+export async function removeOperation(id) {
   const database = await openOfflineDb();
   await new Promise<void>((resolve, reject) => {
     const transaction = database.transaction(storeName, "readwrite");
