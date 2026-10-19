@@ -71,6 +71,37 @@ func TestPrincipalRoleUnionCanUpdateSettings(t *testing.T) {
 	}
 }
 
+func TestStudentVisibilityIsTenantAndParentScoped(t *testing.T) {
+	service, _, parent, _ := fixture(t)
+	if !service.CanAccessStudent(parent, "student-1") {
+		t.Fatal("linked parent should access the student's fee and results summary")
+	}
+	if service.CanAccessStudent(parent, "student-2") {
+		t.Fatal("parent must not access an unrelated student")
+	}
+	outsider := User{ID: "outsider", SchoolID: "another-school", Roles: []Role{RoleParent}}
+	if service.CanAccessStudent(outsider, "student-1") {
+		t.Fatal("cross-tenant access must be denied")
+	}
+}
+
+func TestAuthenticateAcceptsEmailAndPhoneIdentifiers(t *testing.T) {
+	service, _, _, _ := fixture(t)
+	registrar := User{ID: "registrar", SchoolID: "school-1", Name: "Registrar", Email: "registrar@example.test", Phone: "+254700000099", Roles: []Role{RolePrincipal}}
+	if err := service.AddUser(registrar); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SetPassword(registrar, registrar.ID, "SecurePass1"); err != nil {
+		t.Fatal(err)
+	}
+	for _, identifier := range []string{registrar.ID, registrar.Email, registrar.Phone} {
+		user, err := service.Authenticate(identifier, "SecurePass1")
+		if err != nil || user.ID != registrar.ID {
+			t.Fatalf("login with %q failed: %#v %v", identifier, user, err)
+		}
+	}
+}
+
 func TestCBCEnrollmentAndCompetencyAssessment(t *testing.T) {
 	service, _, _, _ := fixture(t)
 	dos := User{ID: "dos", SchoolID: "school-1", Name: "DOS", Roles: []Role{RoleDOS}}

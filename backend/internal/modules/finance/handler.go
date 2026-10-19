@@ -1,7 +1,7 @@
 package finance
 
 import (
-	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,33 +10,28 @@ import (
 
 	"elimu-core/backend/internal/domain"
 	"elimu-core/backend/internal/pkg/daraja"
+	"elimu-core/backend/internal/pkg/identity"
 	"elimu-core/backend/internal/pkg/response"
 )
-
-// actorKey is the context key used by auth middleware to store the actor User.
-type actorKey struct{}
 
 // ContextWithActor returns a shallow copy of r with the actor embedded in its context.
 // The auth middleware calls this before routing to any finance handler.
 func ContextWithActor(r *http.Request, actor domain.User) *http.Request {
-	return r.WithContext(context.WithValue(r.Context(), actorKey{}, actor))
+	return r.WithContext(identity.WithActor(r.Context(), actor))
 }
 
 func actorFromContext(r *http.Request) (domain.User, bool) {
-	v := r.Context().Value(actorKey{})
-	if v == nil {
-		return domain.User{}, false
-	}
-	u, ok := v.(domain.User)
-	return u, ok
+	return identity.Actor(r.Context())
 }
 
 // Handler exposes all Phase 3 finance HTTP endpoints.
 // DarajaClient is optional: when nil, the STK-push endpoint responds with 503
 // so the portal degrades gracefully until production credentials are deployed.
 type Handler struct {
-	Service      *domain.Service
-	DarajaClient daraja.Client
+	Service            *domain.Service
+	DarajaClient       daraja.Client
+	DarajaShortCode    string
+	MPesaCallbackToken string
 }
 
 // ---------- Vote Heads ----------
@@ -107,7 +102,7 @@ func (h Handler) CreateInvoice(w http.ResponseWriter, r *http.Request) {
 // StudentLedger handles GET /api/v1/finance/ledger/{student_id}.
 // Returns the full ledger entry list and current balance for a student.
 func (h Handler) StudentLedger(w http.ResponseWriter, r *http.Request) {
-	_, ok := actorFromContext(r)
+	actor, ok := actorFromContext(r)
 	if !ok {
 		response.Error(w, http.StatusUnauthorized, "authentication required")
 		return
@@ -115,6 +110,10 @@ func (h Handler) StudentLedger(w http.ResponseWriter, r *http.Request) {
 	studentID := r.PathValue("student_id")
 	if strings.TrimSpace(studentID) == "" {
 		response.Error(w, http.StatusBadRequest, "student_id is required")
+		return
+	}
+	if !h.Service.CanAccessStudent(actor, studentID) {
+		response.Error(w, http.StatusForbidden, "student ledger access denied")
 		return
 	}
 	entries := h.Service.Ledger(studentID)
@@ -223,7 +222,7 @@ func (h Handler) GrantFeeWaiver(w http.ResponseWriter, r *http.Request) {
 // The parent/student portal calls this to decide whether to show the report-card
 // download button or to display the fee-arrears administrative notice instead.
 func (h Handler) CanViewResults(w http.ResponseWriter, r *http.Request) {
-	_, ok := actorFromContext(r)
+	actor, ok := actorFromContext(r)
 	if !ok {
 		response.Error(w, http.StatusUnauthorized, "authentication required")
 		return
@@ -231,6 +230,10 @@ func (h Handler) CanViewResults(w http.ResponseWriter, r *http.Request) {
 	studentID := r.PathValue("student_id")
 	if strings.TrimSpace(studentID) == "" {
 		response.Error(w, http.StatusBadRequest, "student_id is required")
+		return
+	}
+	if !h.Service.CanAccessStudent(actor, studentID) {
+		response.Error(w, http.StatusForbidden, "student results access denied")
 		return
 	}
 	canView := h.Service.CanViewResults(studentID)
@@ -255,10 +258,15 @@ type mpesaC2BCallback struct {
 
 // MPesaC2BCallback handles POST /api/v1/finance/mpesa/callback.
 // Safaricom calls this URL after every successful C2B payment. The endpoint
-// does NOT require end-user Bearer authentication (Safaricom authenticates
-// via Basic Auth configured on the paybill shortcode). A 200 response with
+// uses a dedicated unguessable callback token because it cannot use an
+// end-user Bearer session. A 200 response with
 // ResultCode "0" acknowledges receipt; any non-zero code triggers a Daraja retry.
 func (h Handler) MPesaC2BCallback(w http.ResponseWriter, r *http.Request) {
+	providedToken := r.URL.Query().Get("token")
+	if h.MPesaCallbackToken == "" || len(providedToken) != len(h.MPesaCallbackToken) || subtle.ConstantTimeCompare([]byte(providedToken), []byte(h.MPesaCallbackToken)) != 1 {
+		response.Error(w, http.StatusUnauthorized, "invalid callback token")
+		return
+	}
 	var cb mpesaC2BCallback
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&cb); err != nil {
 		// Return 400 to signal that the payload was malformed; Daraja will not retry malformed bodies.
@@ -310,7 +318,7 @@ func (h Handler) InitiateSTKPush(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	if h.DarajaClient == nil {
+	if h.DarajaClient == nil || h.DarajaShortCode == "" {
 		response.Error(w, http.StatusServiceUnavailable, "M-Pesa online payment is not yet enabled; please use the paybill number directly")
 		return
 	}
@@ -325,6 +333,10 @@ func (h Handler) InitiateSTKPush(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "student_id, phone_number, and positive amount_cents are required")
 		return
 	}
+	if !h.Service.CanAccessStudent(actor, req.StudentID) {
+		response.Error(w, http.StatusForbidden, "payment access denied for this student")
+		return
+	}
 
 	accountRef := req.StudentID
 	if desc := strings.TrimSpace(req.Description); desc != "" {
@@ -332,7 +344,7 @@ func (h Handler) InitiateSTKPush(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stkResp, err := h.DarajaClient.InitiateSTKPush(r.Context(), daraja.STKPushRequest{
-		BusinessShortCode: actor.SchoolID,
+		BusinessShortCode: h.DarajaShortCode,
 		PhoneNumber:       req.PhoneNumber,
 		AccountReference:  accountRef,
 		AmountCents:       req.AmountCents,

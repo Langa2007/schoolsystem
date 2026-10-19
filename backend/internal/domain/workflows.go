@@ -358,20 +358,8 @@ func (s *Service) SetPassword(actor User, userID, password string) error {
 	if !hasRole(actor, RolePrincipal) && !hasRole(actor, RoleRegistrar) {
 		return errors.New("registrar or principal required")
 	}
-	if len(password) < 8 {
-		return errors.New("password must be at least 8 characters")
-	}
-	hasLetter, hasDigit := false, false
-	for _, r := range password {
-		if r >= '0' && r <= '9' {
-			hasDigit = true
-		}
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
-			hasLetter = true
-		}
-	}
-	if !hasLetter || !hasDigit {
-		return errors.New("password must contain a letter and a number")
+	if err := validatePassword(password); err != nil {
+		return err
 	}
 	salt := randomID()
 	hash := passwordDigest(salt, password)
@@ -385,14 +373,74 @@ func (s *Service) SetPassword(actor User, userID, password string) error {
 	return nil
 }
 
-func (s *Service) Authenticate(userID, password string) (User, error) {
+func validatePassword(password string) error {
+	if len(password) < 8 {
+		return errors.New("password must be at least 8 characters")
+	}
+	letter, digit := false, false
+	for _, r := range password {
+		if r >= '0' && r <= '9' {
+			digit = true
+		}
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+			letter = true
+		}
+	}
+	if !letter || !digit {
+		return errors.New("password must contain a letter and a number")
+	}
+	return nil
+}
+
+func (s *Service) ChangePassword(actor User, currentPassword, newPassword string) error {
+	if err := validatePassword(newPassword); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	u, ok := s.users[userID]
+	if _, ok := s.users[actor.ID]; !ok || actor.SchoolID != s.settings.ID {
+		return errors.New("account not found")
+	}
+	account, ok := s.accounts[actor.ID]
+	if !ok || account.Locked || passwordDigest(account.Salt, currentPassword) != account.PasswordHash {
+		return errors.New("current password is incorrect")
+	}
+	if currentPassword == newPassword {
+		return errors.New("new password must differ from current password")
+	}
+	account.Salt = randomID()
+	account.PasswordHash = passwordDigest(account.Salt, newPassword)
+	account.MustChangePassword = false
+	account.FailedAttempts = 0
+	s.accounts[actor.ID] = account
+	s.audit(actor, "account.password_changed", "account", actor.ID, "password changed by user")
+	return nil
+}
+
+func (s *Service) PasswordChangeRequired(userID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.accounts[userID].MustChangePassword
+}
+
+func (s *Service) Authenticate(identifier, password string) (User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	identifier = strings.TrimSpace(identifier)
+	var u User
+	ok := false
+	for _, candidate := range s.users {
+		if candidate.ID == identifier || candidate.Phone == identifier || (candidate.Email != "" && strings.EqualFold(candidate.Email, identifier)) {
+			if ok {
+				return User{}, errors.New("ambiguous login identifier")
+			}
+			u, ok = candidate, true
+		}
+	}
 	if !ok {
 		return User{}, errors.New("invalid credentials")
 	}
-	a, ok := s.accounts[userID]
+	a, ok := s.accounts[u.ID]
 	if !ok || a.Locked {
 		return User{}, errors.New("account unavailable")
 	}
@@ -401,11 +449,11 @@ func (s *Service) Authenticate(userID, password string) (User, error) {
 		if a.FailedAttempts >= 5 {
 			a.Locked = true
 		}
-		s.accounts[userID] = a
+		s.accounts[u.ID] = a
 		return User{}, errors.New("invalid credentials")
 	}
 	a.FailedAttempts = 0
-	s.accounts[userID] = a
+	s.accounts[u.ID] = a
 	return u, nil
 }
 func passwordDigest(salt, password string) string {

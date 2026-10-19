@@ -210,6 +210,14 @@ func (s *Service) AddUser(user User) error {
 	if _, exists := s.users[user.ID]; exists {
 		return errors.New("user already exists")
 	}
+	for _, existing := range s.users {
+		if user.Phone != "" && existing.Phone == user.Phone {
+			return errors.New("phone number is already registered")
+		}
+		if user.Email != "" && strings.EqualFold(existing.Email, user.Email) {
+			return errors.New("email is already registered")
+		}
+	}
 	s.users[user.ID] = user
 	s.audit(user, "user.created", "user", user.ID, strings.Join(roleNames(user.Roles), ","))
 	return nil
@@ -220,6 +228,119 @@ func (s *Service) User(id string) (User, bool) {
 	defer s.mu.RUnlock()
 	u, ok := s.users[id]
 	return u, ok
+}
+
+// CanAccessStudent enforces school scope and the basic student visibility rules
+// shared by portal endpoints. Staff roles with operational access may view
+// school records; parents are limited to their linked students.
+func (s *Service) CanAccessStudent(actor User, studentID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	student, ok := s.students[studentID]
+	if !ok || actor.SchoolID != s.settings.ID || student.SchoolID != actor.SchoolID {
+		return false
+	}
+	for _, role := range actor.Roles {
+		switch role {
+		case RolePrincipal, RoleRegistrar, RoleBursar, RoleAccountsClerk:
+			return true
+		}
+	}
+	for _, parentID := range student.ParentIDs {
+		if parentID == actor.ID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) ListStudents(actor User) ([]Student, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if actor.SchoolID != s.settings.ID {
+		return nil, errors.New("school access denied")
+	}
+	privileged := false
+	for _, role := range actor.Roles {
+		if role == RolePrincipal || role == RoleRegistrar || role == RoleBursar || role == RoleAccountsClerk {
+			privileged = true
+		}
+	}
+	result := make([]Student, 0)
+	for _, student := range s.students {
+		if student.SchoolID != actor.SchoolID {
+			continue
+		}
+		visible := privileged
+		if !visible {
+			for _, parentID := range student.ParentIDs {
+				if parentID == actor.ID {
+					visible = true
+					break
+				}
+			}
+		}
+		if !visible && hasRole(actor, RoleClassTeacher) {
+			for _, stream := range s.streams {
+				if stream.ClassTeacherID == actor.ID && (stream.ID == student.ClassStream || stream.Name == student.ClassStream) {
+					visible = true
+					break
+				}
+			}
+		}
+		if visible {
+			student.ParentIDs = append([]string(nil), student.ParentIDs...)
+			result = append(result, student)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].AdmissionNumber < result[j].AdmissionNumber })
+	return result, nil
+}
+
+func (s *Service) ListStreams(actor User) ([]Stream, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if actor.SchoolID != s.settings.ID {
+		return nil, errors.New("school access denied")
+	}
+	if hasRole(actor, RoleParent) || hasRole(actor, RolePrefect) {
+		return nil, errors.New("stream listing access denied")
+	}
+	result := make([]Stream, 0, len(s.streams))
+	for _, stream := range s.streams {
+		if stream.SchoolID == actor.SchoolID {
+			result = append(result, stream)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Grade == result[j].Grade {
+			return result[i].Name < result[j].Name
+		}
+		return result[i].Grade < result[j].Grade
+	})
+	return result, nil
+}
+
+func (s *Service) ListTerms(actor User) ([]AcademicTerm, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if actor.SchoolID != s.settings.ID {
+		return nil, errors.New("school access denied")
+	}
+	result := make([]AcademicTerm, 0, len(s.terms))
+	for _, term := range s.terms {
+		if term.SchoolID == actor.SchoolID {
+			term.Holidays = append([]DateRange(nil), term.Holidays...)
+			result = append(result, term)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Year == result[j].Year {
+			return result[i].Opens.Before(result[j].Opens)
+		}
+		return result[i].Year < result[j].Year
+	})
+	return result, nil
 }
 
 func (s *Service) AddStudent(student Student) error {

@@ -8,10 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
 	"elimu-core/backend/internal/domain"
+	"elimu-core/backend/internal/pkg/identity"
+	"elimu-core/backend/internal/pkg/response"
 )
 
 var ErrInvalidCredentials = errors.New("invalid credentials")
@@ -23,16 +26,51 @@ type Service struct {
 }
 
 type Session struct {
-	AccessToken string      `json:"access_token"`
-	TokenType   string      `json:"token_type"`
-	ExpiresAt   time.Time   `json:"expires_at"`
-	User        domain.User `json:"user"`
+	AccessToken        string      `json:"access_token"`
+	TokenType          string      `json:"token_type"`
+	ExpiresAt          time.Time   `json:"expires_at"`
+	MustChangePassword bool        `json:"must_change_password"`
+	User               domain.User `json:"user"`
 }
 
 type tokenClaims struct {
 	UserID   string `json:"sub"`
 	SchoolID string `json:"school_id"`
 	Expires  int64  `json:"exp"`
+}
+
+// ActorFromContext returns the authenticated user attached by Middleware.
+func ActorFromContext(ctx context.Context) (domain.User, bool) {
+	return identity.Actor(ctx)
+}
+
+// Middleware verifies a Bearer token and reloads the user so role changes take
+// effect immediately instead of trusting role data embedded in a token.
+func (s *Service) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s == nil || s.Domain == nil {
+			response.Error(w, http.StatusServiceUnavailable, "authentication unavailable")
+			return
+		}
+		const prefix = "Bearer "
+		header := r.Header.Get("Authorization")
+		if !strings.HasPrefix(header, prefix) {
+			response.Error(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		user, err := VerifyToken(strings.TrimSpace(strings.TrimPrefix(header, prefix)), s.Secret, time.Now())
+		if err != nil {
+			response.Error(w, http.StatusUnauthorized, "invalid or expired token")
+			return
+		}
+		current, ok := s.Domain.User(user.ID)
+		if !ok || current.SchoolID != user.SchoolID {
+			response.Error(w, http.StatusUnauthorized, "account unavailable")
+			return
+		}
+		ctx := identity.WithActor(r.Context(), current)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 func (s *Service) Authenticate(_ context.Context, identifier, password string) (Session, error) {
@@ -49,7 +87,7 @@ func (s *Service) Authenticate(_ context.Context, identifier, password string) (
 	if err != nil {
 		return Session{}, fmt.Errorf("issue session: %w", err)
 	}
-	return Session{AccessToken: token, TokenType: "Bearer", ExpiresAt: expires, User: user}, nil
+	return Session{AccessToken: token, TokenType: "Bearer", ExpiresAt: expires, MustChangePassword: s.Domain.PasswordChangeRequired(user.ID), User: user}, nil
 }
 
 func VerifyToken(token string, secret []byte, now time.Time) (domain.User, error) {
